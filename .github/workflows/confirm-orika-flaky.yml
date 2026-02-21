@@ -1,0 +1,53 @@
+name: Confirm Orika Flaky Test (NonDex)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - romel/part3-method2
+
+jobs:
+  verify-flaky-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Java 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+          cache: maven
+
+      - name: Checkout Orika at exact commit
+        run: |
+          git clone https://github.com/orika-mapper/orika.git
+          cd orika
+          git checkout 232848f1d482be26594c38f9919ab78c4927f10b
+          git rev-parse HEAD
+
+      - name: Regular run (expected pass)
+        run: |
+          cd orika
+          mvn -pl core test \
+            -Dtest=ma.glasnost.orika.test.metadata.ScoringClassMapBuilderTest#testClassMapBuilderExtension \
+            -DfailIfNoTests=false \
+            -DskipITs -DskipIT \
+            -Drat.skip=true -Dlicense.skip=true -Dcheckstyle.skip=true -Denforcer.skip=true -Dspotbugs.skip=true -Dspotless.check.skip=true
+
+      - name: NonDex run (expected fail)
+        id: nondex
+        continue-on-error: true
+        run: |
+          cd orika
+          mvn -pl core edu.illinois:nondex-maven-plugin:2.1.1:nondex \
+            -Dtest=ma.glasnost.orika.test.metadata.ScoringClassMapBuilderTest#testClassMapBuilderExtension \
+            -DnondexRuns=20 \
+            -DskipITs -DskipIT \
+            -Drat.skip=true -Dlicense.skip=true -Dcheckstyle.skip=true -Denforcer.skip=true -Dspotbugs.skip=true -Dspotless.check.skip=true
+
+      - name: Assert NonDex failure was observed
+        run: |
+          if [ "${{ steps.nondex.outcome }}" != "failure" ]; then
+            echo "Expected NonDex failure, but step outcome was: ${{ steps.nondex.outcome }}"
+            exit 1
+          fi
